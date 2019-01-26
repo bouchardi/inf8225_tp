@@ -1,7 +1,6 @@
 import numpy as np
 
 def main():
-
     # pluie = P(P=0) = 0.8
     #         P(P=1)   0.2
     pluie = np.array([0.8, 0.2]).reshape(2, 1, 1, 1)
@@ -36,18 +35,16 @@ def main():
     print('B. Pr(W=1|H=1) = {}'.format(B))
 
     # C. Pr(W=1|H=1, A=0)
-    C = prob_conjointe[:, 0, 1, 1].sum()/prob_conjointe[0, :, :, 1].sum()
+    C = prob_conjointe[:, 0, 1, 1].sum()/prob_conjointe[:, 0, :, 1].sum()
     print('C. Pr(W=1|H=1,A=0) = {}'.format(C))
 
-    # D. Pr(W=1|A=0)
+    # D. Pr(W=1|A=0)=Pr(W=1)
     D = prob_conjointe[:, 0, 1, :].sum()/prob_conjointe[:, 0, :, :].sum()
-    print('C. Pr(W=1|A=0) = {}'.format(D))
+    print('D. Pr(W=1|A=0) = {}'.format(D))
 
     # E. Pr(W=1|P=1)
     E = prob_conjointe[1, :, 1, :].sum()/prob_conjointe[1, :, :, :].sum()
-    print('C. Pr(W=1|P=1) = {}'.format(E))
-
-
+    print('E. Pr(W=1|P=1) = {}'.format(E))
 
 if __name__ == '__main__':
     main()

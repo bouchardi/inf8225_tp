@@ -4,96 +4,143 @@ from sklearn import datasets
 from sklearn.model_selection import train_test_split
 
 
+def add_dims(X, n_dims):
+    return np.concatenate((X, np.random.uniform(X.min(),
+                                                X.max(),
+                                                (X.shape[0], n_dims))), axis=1)
+
+def softmax(model_output):
+    e_x = np.exp(model_output - np.max(model_output, axis=0))
+    return e_x / e_x.sum(axis=0)
+
+def get_accuracy(pred, target):
+    results = np.argmax(target, axis=0) == np.argmax(pred, axis=0)
+    return len(results[results])/len(results)
+
+def get_grads(target, pred, model_input, W, l1, l2, N):
+    reg_term = l1 * np.sign(W) + 2 * l2 * W
+    # We normalise the gradient with the batch size because otherwise we explode the gradient with big batches
+    return (np.dot(model_input, pred.T) - np.dot(model_input, target.T)) / model_input.shape[1] + ((model_input.shape[1] * reg_term) / N)
+
+
+def get_loss(target, pred, W, l1, l2):
+    reg_term = l1 * np.sum(np.abs(W)) + l2 * np.sum(np.square(W))
+    # We take the mean before taking the log to avoid exploding the loss with very small numbers
+    return -np.log((target * pred + (1 - target) * (1 - pred)).mean()) + reg_term
+
+def get_prediction(model_input, W):
+    return softmax(np.dot(W.T, model_input))
+
+def add_bias_term(X):
+    return np.concatenate((X, np.ones((1, X.shape[1]))))
+
+def get_mean(model_W, begin=0, end=-1):
+    return np.mean(np.abs(model_W[begin:end]))
+
+def get_var(model_W, begin=0, end=-1):
+    return np.var(model_W[begin:end])
+
+# Load data
 digits = datasets.load_digits()
 X = digits.data  # 8x8 image of a digit
 y = digits.target  # int representing a target digit
 
+# Add randomly distributed values at the end of the data
+X = add_dims(X, n_dims=8)
+
 y_one_hot = np.zeros((y.shape[0], len(np.unique(y))))
 y_one_hot[np.arange(y.shape[0]), y] = 1
 
+# Split train/test/valid
 X_train, X_test, y_train, y_test = train_test_split(X, y_one_hot, test_size=0.3, random_state=42)
-
 X_test, X_validation, y_test, y_validation = train_test_split(X_test, y_test , test_size=0.5, random_state=42)
 
-W = np.random.normal(0, 0.01, (len(np.unique(y)), X.shape[1]))  # weights of shape KxL
+nb_epochs = 20
+lrs = [0.01]
+minibatch_sizes = [200]
 
-best_W = None
-best_accuracy = 0
-lr = 0.001
-nb_epochs = 50
-minibatch_size = len(y_train) // 20
+lambda1 = 0.1
+lambda2 = 1.e-8
 
-losses = []
-accuracies = []
+# Grid search on learning rate and batch size
+for lr in lrs:
+    for minibatch_size in minibatch_sizes:
 
-def softmax(X):
-    e_x = np.exp(X - np.max(X))
-    return e_x / e_x.sum(axis=0)
+        legend = f'lr={lr}, bs={minibatch_size}'
+        print(legend)
+        legends.append(legend)
 
-def get_accuracy(X, y, W):
-    res = 0
-    # Validation
-    for model_input, target in zip(X, y):
-        pred = get_prediction(model_input, W)
-        res += int(np.argmax(pred) == np.argmax(target))
-    return res / len(X)
+        # Initialize weights
+        W = np.random.normal(0, 0.01, (len(np.unique(y)), (X.shape[1] + 1))).T  # weights of shape KxL
 
+        accuracies = []
+        losses = []
+        valid_losses = []
 
-def get_grads(target, pred, model_input):
-    return np.dot(np.expand_dims(model_input, 1), np.expand_dims((pred - target), 1).T).T
+        best_accuracy = 0
+        # For each epoch
+        for epoch in range(nb_epochs):
 
-def get_loss(target, pred):
-    return (-target * np.log(pred) - (1 - target) * np.log(1 - pred)).mean()
+            # TRAINING
+            loss = 0
+            # For each batch
+            for i in range(0, X_train.shape[0], minibatch_size):
+                # Model input, target
+                model_input = add_bias_term(X_train[i: i + minibatch_size].T)
 
-def get_prediction(model_input, W):
-    return softmax(np.dot(W, model_input))
+                target = y_train[i: i + minibatch_size].T
 
-print(f'len(X_train) {len(X_train)}')
-print(f'len(y_train) {len(y_train)}')
+                # Forward pass, get prediction
+                pred = get_prediction(model_input, W)
 
-# For each epoch
-for epoch in range(nb_epochs):
+                # Compute the loss
+                loss += get_loss(target, pred, W, lambda1, lambda2)
 
-    loss = 0
-    accuracy = 0
+                # Get the gradient of the loss
+                grads = get_grads(target, pred, model_input, W, lambda1, lambda2, X_train.shape[0])
 
-    # For each batch
-    for i in range(0 , minibatch_size * 19, minibatch_size):
-        grads = 0
+                # Get a step in the opposite direction
+                delta = - lr * grads
 
-        # For each example
-        for index in range(minibatch_size):
+                # update the weights
+                W = W + delta
 
-            # Model input, target
-            model_input = X_train[i+index]
-            target = y_train[i+index]
+            losses.append(loss / ((X_train.shape[0] // minibatch_size) + 1 ))
 
-            # Forward pass, get prediction
-            pred = get_prediction(model_input, W)
+            # VALIDATION
+            loss = 0
+            accuracy = 0
+            # For each batch
+            for i in range(0, X_validation.shape[0], minibatch_size):
+                # Model input, target
+                model_input = add_bias_term(X_validation[i: i + minibatch_size].T)
 
-            # Compute the loss
-            loss += get_loss(target, pred)
+                target = y_validation[i: i + minibatch_size].T
 
-            # Get the gradient of the loss
-            grads += get_grads(target, pred, model_input)
+                # Forward pass, get prediction
+                pred = get_prediction(model_input, W)
 
-        # Get a step in the opposite direction
-        delta = - lr * grads/minibatch_size
+                # Compute the loss and the accuracy
+                loss += get_loss(target, pred, W, lambda1, lambda2)
+                accuracy += get_accuracy(pred, target)
 
-        # update the weights
-        W = W + delta
+            valid_losses.append(loss / ((X_validation.shape[0] // minibatch_size) + 1))
+            accuracies.append(accuracy / ((X_validation.shape[0] // minibatch_size) + 1))
 
-    print(f'Loss {loss / minibatch_size} at {epoch} epochs')
-    losses.append(loss / minibatch_size)
+            print(f'Loss {losses[-1]}, valid loss {valid_losses[-1]},  Accuracy {accuracies[-1]} at {epoch} epochs')
+            # We keep a copy of the weights yielding to the best accuracy on the valid set
+            if accuracy > best_accuracy:
+                best_W = W.copy()
+                best_accuracy = accuracy
 
-    accuracy = get_accuracy(X_validation, y_validation, W)
-    accuracies.append(accuracy)
+        # TESTING
+        pred = get_prediction(add_bias_term(X_test.T), best_W)
+        accuracy_on_unseen_data = get_accuracy(pred, y_test.T)
+        print(f'Test set Accuracy {accuracy_on_unseen_data}')
 
-    if accuracy > best_accuracy:
-        best_W = W.copy()
-
-accuracy_on_unseen_data = get_accuracy(X_test, y_test, best_W)
-print(accuracy_on_unseen_data)
-
-plt.plot(losses)
-plt.imshow(best_W[4, :].reshape(8, 8 ))
+        mean_W_data = get_mean(best_W, begin=0, end=64)
+        mean_W_noise = get_mean(best_W, begin=64, end=-1)
+        var_W_data = get_var(best_W, begin=0, end=64)
+        var_W_noise = get_var(best_W, begin=64, end=-1)
+        print(f'DATA - mean(W) {mean_W_data}, var(W) {var_W_data}')
+        print(f'NOISE - mean(W) {mean_W_noise}, var(W) {var_W_noise}')
