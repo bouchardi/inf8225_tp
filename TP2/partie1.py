@@ -10,8 +10,8 @@ Parameters initialization:
 			   L-1 matrices(D, D),
 			   1 matrix (D, K)]
 
-	# Initialize the weights with the correct number of units per layer
-	weights = [1 matrix(1, D),
+	# Initialize the biais with the correct number of units per layer
+	bias = [1 matrix(1, D),
 			   L-1 matrices(1, D),
 			   1 matrix (1, K)]
 
